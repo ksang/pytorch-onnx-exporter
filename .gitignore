@@ -130,3 +130,6 @@ dmypy.json
 
 # Output files
 output/*
+
+# Downloaded files
+pretrained/*
