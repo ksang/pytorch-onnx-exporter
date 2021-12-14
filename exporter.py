@@ -37,7 +37,13 @@ def export_model(model, args):
     if not os.path.exists('output'):
         os.makedirs('output')
     
-    inputs = torch.randn(args.batch_size, args.channel, args.height, args.width)
+    if args.model.find("yolo") >= 0:
+        # for yolo, img is square sized and must by multipliers of max stride
+        # we are using width here
+        inputs = torch.zeros(args.batch_size, args.channel, args.width)
+    else:
+        inputs = torch.randn(args.batch_size, args.channel, args.height, args.width)
+    
     print("Model:")
     print(model)
     print("Exporting onnx graph to: {}".format(output))
@@ -60,7 +66,7 @@ if __name__ == '__main__':
     parser.add_argument('--width', type=int, default=640, help='The image width of model inputs')
     parser.add_argument('--height', type=int, default=480, help='The image neight of model inputs')
     parser.add_argument('--channel', type=int, default=3, help='The image channel number of model inputs')
-    parser.add_argument('-o', '--output', type=str, default="", help='Overwrite output filename, default is \"output/<model_name>_<source>_<input_shape>.onnx\"')
+    parser.add_argument('-o', '--output', type=str, default="", help='Overwrite output filename, default is \"output/<>_<source>_<input_shape>.onnx\"')
     parser.add_argument('-p', '--without-parameters', action='store_true', help='Do not store parameters along with the graph')
     parser.add_argument('-t', '--training-mode', action='store_true', help='Export training mode graph rather than inference model')
     parser.add_argument('--hub-repo', type=str, default="", help='PyTorch Hub repo dir for the model')
