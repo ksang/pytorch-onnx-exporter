@@ -7,6 +7,7 @@ from pathlib import Path
 import torch.utils.model_zoo as model_zoo
 import torch.onnx
 import torchvision
+from torch.nn import Transformer
 
 import onnx
 from onnxsim import simplify
@@ -27,8 +28,16 @@ def open_model(model_path, args):
         output_name = "downloaded"
     elif os.path.isfile(model_path):
         model = torch.load(model_path)
-        print(model.keys())
         output_name = "{}_local".format(Path(model_path).resolve().stem)
+    elif model_path == "transformer":
+        model = Transformer(d_model=args.transformer_dim,
+                            nhead=args.transformer_heads,
+                            num_encoder_layers=args.transformer_encoder_layers,
+                            num_decoder_layers=args.transformer_decoder_layers )
+        output_name = "transformer_{}dim_{}heads_{}enc_{}dec".format(args.transformer_dim,
+                                                                     args.transformer_heads,
+                                                                     args.transformer_encoder_layers,
+                                                                     args.transformer_decoder_layers   )
     else:
         model = attrgetter(model_path)(torchvision.models)(pretrained=True)
         output_name = "{}_torchvision".format(model_path)
@@ -44,6 +53,8 @@ def export_model(model, args):
         # for yolo, img is square sized and must by multipliers of max stride
         # we are using width here
         inputs = torch.zeros(args.batch_size, args.channel, args.width)
+    elif args.model == "transformer":
+        inputs = (torch.zeros(args.batch_size, 32, args.transformer_dim), torch.zeros(args.batch_size, 32, args.transformer_dim))
     else:
         inputs = torch.randn(args.batch_size, args.channel, args.height, args.width)
     
@@ -65,14 +76,17 @@ def export_model(model, args):
         onnx_model = onnx.load(output+".onnx")
         print("Optimizing model...")
         # convert model
-        model_simp, check = simplify(onnx_model, input_shapes={"input": inputs.shape})
+        if args.model == "transformer":
+            model_simp, check = simplify(onnx_model, input_shapes={"input": inputs[0].shape})
+        else:
+            model_simp, check = simplify(onnx_model, input_shapes={"input": inputs.shape})
         assert check, "Simplified ONNX model could not be validated"
         print("Saving optimized model to: {}".format(output+".optimized.onnx"))
         onnx.save(model_simp, output+".optimized.onnx")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Export pytorch model as onnx graph')
-    parser.add_argument('-m', '--model', type=str, required=True, help='The model name to export, can be local file, url or torchvision model name')
+    parser.add_argument('-m', '--model', type=str, required=True, help='The model name to export, can be local file, url, transformer or torchvision model name')
     parser.add_argument('-n', '--batch-size', type=int, default=1, help='The batch size used for inputs')
     parser.add_argument('--width', type=int, default=1280, help='The image width of model inputs')
     parser.add_argument('--height', type=int, default=720, help='The image neight of model inputs')
@@ -82,6 +96,11 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--training-mode', action='store_true', help='Export training mode graph rather than inference model')
     parser.add_argument('--hub-repo', type=str, default="", help='PyTorch Hub repo dir for the model')
     parser.add_argument('--optimize', action='store_true', help='Optmization and simplify model after export')
+    # Transformer related args
+    parser.add_argument('--transformer-dim', type=int, default=512, help='The input dimension for transformer model')
+    parser.add_argument('--transformer-heads', type=int, default=8, help='The number of heads for transformer model')
+    parser.add_argument('--transformer-encoder-layers', type=int, default=6, help='The number of encoder layers for transformer model')
+    parser.add_argument('--transformer-decoder-layers', type=int, default=6, help='The number of decoder layers for transformer model')
 
     args = parser.parse_args()
 
@@ -90,6 +109,9 @@ if __name__ == '__main__':
         model.eval()
 
     if args.output == "":
-        args.output = "{}_{}x{}x{}".format(output_name, args.channel, args.height, args.width)
+        if args.model == "transformer":
+            args.output = output_name
+        else:
+            args.output = "{}_{}x{}x{}".format(output_name, args.channel, args.height, args.width)
 
     export_model(model, args)
