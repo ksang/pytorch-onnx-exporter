@@ -8,6 +8,7 @@ import torch.utils.model_zoo as model_zoo
 import torch.onnx
 import torchvision
 from torch.nn import Transformer
+from models.unet import UNet
 
 import onnx
 from onnxsim import simplify
@@ -26,9 +27,6 @@ def open_model(model_path, args):
     elif is_url(model_path):
         model = model_zoo.load_url(model_path)
         output_name = "downloaded"
-    elif os.path.isfile(model_path):
-        model = torch.load(model_path)
-        output_name = "{}_local".format(Path(model_path).resolve().stem)
     elif model_path == "transformer":
         model = Transformer(d_model=args.transformer_dim,
                             nhead=args.transformer_heads,
@@ -38,6 +36,16 @@ def open_model(model_path, args):
                                                                      args.transformer_heads,
                                                                      args.transformer_encoder_layers,
                                                                      args.transformer_decoder_layers   )
+    elif model_path == "unet":
+        model = UNet(n_channels=3, n_classes=2)
+        if args.checkpoint:
+            model.load_state_dict(
+                torch.load(args.checkpoint,
+                        map_location=torch.device('cpu')))
+        output_name = model_path
+    elif os.path.isfile(model_path):
+        model = torch.load(model_path, map_location=torch.device('cpu'))
+        output_name = "{}_local".format(Path(model_path).resolve().stem)
     else:
         model = attrgetter(model_path)(torchvision.models)(pretrained=True)
         output_name = "{}_torchvision".format(model_path)
@@ -96,6 +104,7 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--training-mode', action='store_true', help='Export training mode graph rather than inference model')
     parser.add_argument('--hub-repo', type=str, default="", help='PyTorch Hub repo dir for the model')
     parser.add_argument('--optimize', action='store_true', help='Optmization and simplify model after export')
+    parser.add_argument('--checkpoint', type=str, help='Specify checkpoint file for pretained model')
     # Transformer related args
     parser.add_argument('--transformer-dim', type=int, default=512, help='The input dimension for transformer model')
     parser.add_argument('--transformer-heads', type=int, default=8, help='The number of heads for transformer model')
